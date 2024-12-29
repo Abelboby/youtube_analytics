@@ -10,3 +10,4 @@ python-jose[cryptography]
 textblob
 aiofiles
 python-dotenv
+psutil
