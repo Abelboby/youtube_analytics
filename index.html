@@ -1,0 +1,309 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Advanced Analytics Dashboard</title>
+  <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+  <style>
+    body {
+      font-family: Arial, sans-serif;
+      margin: 0;
+      padding: 20px;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+    }
+
+    h1 {
+      margin-bottom: 20px;
+    }
+
+    canvas {
+      max-width: 100%;
+      height: auto;
+      margin-bottom: 20px;
+    }
+
+    #keywordList {
+      width: 100%;
+      max-width: 600px;
+      margin: 20px 0;
+    }
+
+    #error {
+      color: red;
+      margin-top: 20px;
+    }
+
+    .chart-container {
+      display: flex;
+      flex-wrap: wrap;
+      justify-content: center;
+    }
+
+    .chart-box {
+      width: 100%;
+      max-width: 600px;
+      margin: 10px;
+    }
+
+    table {
+      border-collapse: collapse;
+      width: 100%;
+      margin-top: 20px;
+    }
+
+    table th, table td {
+      border: 1px solid #ddd;
+      padding: 8px;
+      text-align: left;
+    }
+
+    table th {
+      background-color: #f2f2f2;
+    }
+  </style>
+</head>
+<body>
+  <h1>Advanced Analytics Dashboard</h1>
+
+  <div class="chart-container">
+    <div class="chart-box">
+      <canvas id="sentimentChart"></canvas>
+    </div>
+    <div class="chart-box">
+      <canvas id="engagementChart"></canvas>
+    </div>
+    <div class="chart-box">
+      <canvas id="likesChart"></canvas>
+    </div>
+    <div class="chart-box">
+      <canvas id="commentsChart"></canvas>
+    </div>
+  </div>
+
+  <h2>Popular Keywords</h2>
+  <table id="keywordList">
+    <thead>
+      <tr>
+        <th>Keyword</th>
+        <th>Count</th>
+      </tr>
+    </thead>
+    <tbody>
+    </tbody>
+  </table>
+
+  <div id="error"></div>
+
+  <script>
+    const wsUrl = "ws://127.0.0.1:8000/ws/live-analytics?url=https://www.youtube.com/watch?v=jfKfPfyJRdk";
+    const sentimentChartCtx = document.getElementById('sentimentChart').getContext('2d');
+    const engagementChartCtx = document.getElementById('engagementChart').getContext('2d');
+    const likesChartCtx = document.getElementById('likesChart').getContext('2d');
+    const commentsChartCtx = document.getElementById('commentsChart').getContext('2d');
+
+    // Initialize Sentiment Chart
+    const sentimentChart = new Chart(sentimentChartCtx, {
+      type: 'line',
+      data: {
+        labels: [], // Timestamps
+        datasets: [{
+          label: 'Average Sentiment',
+          data: [],
+          borderColor: 'rgba(75, 192, 192, 1)',
+          backgroundColor: 'rgba(75, 192, 192, 0.2)',
+          borderWidth: 2,
+          fill: true,
+        }]
+      },
+      options: {
+        responsive: true,
+        scales: {
+          x: {
+            title: {
+              display: true,
+              text: 'Time',
+            }
+          },
+          y: {
+            title: {
+              display: true,
+              text: 'Sentiment Score',
+            },
+            min: -1,
+            max: 1
+          }
+        }
+      }
+    });
+
+    // Initialize Engagement Chart
+    const engagementChart = new Chart(engagementChartCtx, {
+      type: 'bar',
+      data: {
+        labels: [], // Timestamps
+        datasets: [{
+          label: 'Comments Per Minute',
+          data: [],
+          backgroundColor: 'rgba(255, 99, 132, 0.2)',
+          borderColor: 'rgba(255, 99, 132, 1)',
+          borderWidth: 1
+        }]
+      },
+      options: {
+        responsive: true,
+        scales: {
+          x: {
+            title: {
+              display: true,
+              text: 'Time',
+            }
+          },
+          y: {
+            title: {
+              display: true,
+              text: 'Comments',
+            },
+            beginAtZero: true
+          }
+        }
+      }
+    });
+
+    // Initialize Likes Chart
+    const likesChart = new Chart(likesChartCtx, {
+      type: 'line',
+      data: {
+        labels: [], // Timestamps
+        datasets: [{
+          label: 'Likes',
+          data: [],
+          borderColor: 'rgba(54, 162, 235, 1)',
+          backgroundColor: 'rgba(54, 162, 235, 0.2)',
+          borderWidth: 2,
+          fill: true,
+        }]
+      },
+      options: {
+        responsive: true,
+        scales: {
+          x: {
+            title: {
+              display: true,
+              text: 'Time',
+            }
+          },
+          y: {
+            title: {
+              display: true,
+              text: 'Likes',
+            },
+            beginAtZero: true
+          }
+        }
+      }
+    });
+
+    // Initialize Comments Chart
+    const commentsChart = new Chart(commentsChartCtx, {
+      type: 'doughnut',
+      data: {
+        labels: ['Positive', 'Neutral', 'Negative'],
+        datasets: [{
+          label: 'Sentiment Distribution',
+          data: [0, 0, 0],
+          backgroundColor: [
+            'rgba(75, 192, 192, 0.2)',
+            'rgba(201, 203, 207, 0.2)',
+            'rgba(255, 99, 132, 0.2)'
+          ],
+          borderColor: [
+            'rgba(75, 192, 192, 1)',
+            'rgba(201, 203, 207, 1)',
+            'rgba(255, 99, 132, 1)'
+          ],
+          borderWidth: 1
+        }]
+      },
+      options: {
+        responsive: true,
+      }
+    });
+
+    // WebSocket connection
+    const websocket = new WebSocket(wsUrl);
+
+    websocket.onopen = () => {
+      console.log('WebSocket connection opened');
+    };
+
+    websocket.onmessage = (event) => {
+      const data = JSON.parse(event.data);
+      console.log('Received:', data);
+
+      // Handle errors
+      if (data.error) {
+        document.getElementById('error').textContent = `Error: ${data.error}`;
+        return;
+      }
+
+      // Update Sentiment Chart
+      if (data.timestamp && data.average_sentiment !== undefined) {
+        sentimentChart.data.labels.push(data.timestamp); // Add new timestamp
+        sentimentChart.data.datasets[0].data.push(data.average_sentiment); // Add new average sentiment
+        sentimentChart.update();
+      }
+
+      // Update Engagement Chart
+      if (data.engagement) {
+        engagementChart.data.labels.push(data.timestamp); // Add new timestamp
+        engagementChart.data.datasets[0].data.push(data.engagement.comments_per_minute); // Add comments per minute
+        engagementChart.update();
+
+        // Update Likes Chart
+        likesChart.data.labels.push(data.timestamp);
+        likesChart.data.datasets[0].data.push(data.engagement.likes);
+        likesChart.update();
+      }
+
+      // Update Sentiment Distribution Chart
+      if (data.sentiments) {
+        const positive = data.sentiments.filter(s => s > 0).length;
+        const neutral = data.sentiments.filter(s => s === 0).length;
+        const negative = data.sentiments.filter(s => s < 0).length;
+
+        commentsChart.data.datasets[0].data = [positive, neutral, negative];
+        commentsChart.update();
+      }
+
+      // Update Keywords Table
+      if (data.keywords) {
+        const keywordTableBody = document.querySelector('#keywordList tbody');
+        keywordTableBody.innerHTML = '';
+        data.keywords.forEach(keyword => {
+          const row = document.createElement('tr');
+          const keywordCell = document.createElement('td');
+          const countCell = document.createElement('td');
+          keywordCell.textContent = keyword.keyword;
+          countCell.textContent = keyword.count;
+          row.appendChild(keywordCell);
+          row.appendChild(countCell);
+          keywordTableBody.appendChild(row);
+        });
+      }
+    };
+
+    websocket.onerror = (error) => {
+      console.error('WebSocket error:', error);
+      document.getElementById('error').textContent = 'WebSocket error. Check the console for details.';
+    };
+
+    websocket.onclose = () => {
+      console.log('WebSocket connection closed');
+      document.getElementById('error').textContent = 'WebSocket connection closed.';
+    };
+  </script>
+</body>
+</html>

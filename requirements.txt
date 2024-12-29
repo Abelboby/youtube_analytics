@@ -1,0 +1,15 @@
+fastapi
+uvicorn
+playwright
+python-multipart
+websockets
+transformers
+torch
+numpy
+scikit-learn
+pydantic
+python-jose[cryptography]
+textblob
+pytorch
+aiofiles
+python-dotenv
