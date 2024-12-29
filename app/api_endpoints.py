@@ -128,8 +128,8 @@ async def live_analytics_endpoint(websocket: WebSocket):
             start_time = datetime.now()
 
             while True:
-                if (datetime.now() - connection_start_time).total_seconds() > 240:
-                    await websocket.send_json({"error": "TIMEOUT: Connection closed after 4 minutes. Please reconnect."})
+                if (datetime.now() - connection_start_time).total_seconds() > 1800:
+                    await websocket.send_json({"error": "TIMEOUT: Connection closed after 30 minutes. Please reconnect."})
                     break
 
                 new_comments = await fetch_live_comments()

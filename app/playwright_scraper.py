@@ -92,62 +92,71 @@ def scrape_video_details(video_url: str) -> dict:
 
 
 async def scrape_youtube_live(url, websocket):
-    async with async_playwright() as p:
-        browser = await p.chromium.launch(headless=True)
-        page = await browser.new_page()
-        await page.goto(url)
-
-        # Extract Title
-        try:
-            title = await page.locator("h1.title").inner_text()
-            print(f"Title: {title}")
-        except Exception as e:
-            print(f"Failed to extract title: {e}")
-            title = "Unknown Title"
-
-        # Extract Views
-        try:
-            views = await page.locator("span.view-count").inner_text()
-            print(f"Views: {views}")
-        except Exception as e:
-            print(f"Failed to extract views: {e}")
-            views = "Unknown Views"
-
-        # Extract Channel Name
-        try:
-            channel_name = await page.locator("#upload-info #channel-name").inner_text()
-            print(f"Channel Name: {channel_name}")
-        except Exception as e:
-            print(f"Failed to extract channel name: {e}")
-            channel_name = "Unknown Channel"
-
-        # Function to Fetch Live Comments
-        async def fetch_live_comments():
+    try:
+        async with async_playwright() as p:
+            # First try with Bright Data proxy
             try:
-                live_comments = []
-                comment_elements = await page.locator("yt-live-chat-text-message-renderer #message").all()
-                for comment in comment_elements:
-                    comment_text = await comment.inner_text()
-                    live_comments.append(comment_text)
-                return live_comments
-            except Exception as e:
-                print(f"Failed to extract live comments: {e}")
-                return []
+                browser = await p.chromium.connect_over_cdp(
+                    "wss://brd-customer-hl_9654ded4-zone-scrapperyoutube:9zq91c2voiql@brd.superproxy.io:9222"
+                )
+                context = browser.contexts[0]
+            except Exception as proxy_error:
+                print(f"Bright Data proxy connection failed: {proxy_error}")
+                # Fallback to regular headless browser
+                browser = await p.chromium.launch(headless=True)
+                context = await browser.new_context()
 
-        # Initial Live Comments Fetch
-        live_comments = await fetch_live_comments()
-        print(f"Initial Live Comments: {live_comments}")
-        await websocket.send_json({
-            "title": title,
-            "views": views,
-            "channel_name": channel_name,
-            "live_comments": live_comments,
-        })
+            page = await context.new_page()
+            await page.goto(url)
 
-        # Poll for Live Comments Every 30 Seconds
-        while True:
+            # Extract Title
+            try:
+                title = await page.locator("h1.title.style-scope.ytd-video-primary-info-renderer").inner_text()
+                print(f"Title: {title}")
+            except Exception:
+                title = "Unknown Title"
+
+            # Extract Channel Name
+            try:
+                channel_name = await page.locator("#upload-info #channel-name").inner_text()
+                print(f"Channel Name: {channel_name}")
+            except Exception:
+                channel_name = "Unknown Channel"
+
+            # Function to Fetch Live Comments
+            async def fetch_live_comments():
+                try:
+                    comment_elements = await page.frame_locator("iframe#chatframe").locator(
+                        "yt-live-chat-text-message-renderer #message"
+                    ).all()
+                    return [await comment.inner_text() for comment in comment_elements]
+                except Exception as e:
+                    print(f"Failed to extract live comments: {e}")
+                    return []
+
+            # Initial Live Comments Fetch
             live_comments = await fetch_live_comments()
-            await websocket.send_json({"live_comments": live_comments})
-            await asyncio.sleep(30)
+            await websocket.send_json({
+                "title": title,
+                "channel_name": channel_name,
+                "live_comments": live_comments,
+            })
 
-        await browser.close()
+            # Poll for Live Comments
+            while True:
+                try:
+                    live_comments = await fetch_live_comments()
+                    if live_comments:  # Only send if we have comments
+                        await websocket.send_json({"live_comments": live_comments})
+                    await asyncio.sleep(30)
+                except Exception as e:
+                    print(f"Error during comment polling: {e}")
+                    await websocket.send_json({"error": "Comment polling failed, attempting to reconnect..."})
+                    await asyncio.sleep(5)  # Wait before retrying
+
+    except Exception as e:
+        print(f"Scraping error: {e}")
+        await websocket.send_json({"error": f"Scraping failed: {str(e)}"})
+    finally:
+        if 'browser' in locals():
+            await browser.close()

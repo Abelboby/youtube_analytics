@@ -98,7 +98,7 @@
   <div id="error"></div>
 
   <script>
-    const wsUrl = "ws://youtube-analytics-voa1.onrender.com/ws/live-analytics?url=https://www.youtube.com/watch?v=jfKfPfyJRdk";
+    const wsUrl = "ws://youtubeanalytics-production.up.railway.app/ws/live-analytics?url=https://www.youtube.com/watch?v=jfKfPfyJRdk";
     const sentimentChartCtx = document.getElementById('sentimentChart').getContext('2d');
     const engagementChartCtx = document.getElementById('engagementChart').getContext('2d');
     const likesChartCtx = document.getElementById('likesChart').getContext('2d');
@@ -232,78 +232,102 @@
       }
     });
 
-    // WebSocket connection
-    const websocket = new WebSocket(wsUrl);
+    // WebSocket connection with auto-reconnect
+    let websocket;
+    const RECONNECT_TIMEOUT = 5000; // 5 seconds
 
-    websocket.onopen = () => {
-      console.log('WebSocket connection opened');
-    };
+    function connect() {
+        websocket = new WebSocket(wsUrl);
 
-    websocket.onmessage = (event) => {
-      const data = JSON.parse(event.data);
-      console.log('Received:', data);
+        websocket.onopen = () => {
+            console.log('WebSocket connection opened');
+            document.getElementById('error').textContent = ''; // Clear any error messages
+        };
 
-      // Handle errors
-      if (data.error) {
-        document.getElementById('error').textContent = `Error: ${data.error}`;
-        return;
-      }
+        websocket.onmessage = (event) => {
+            const data = JSON.parse(event.data);
+            console.log('Received:', data);
 
-      // Update Sentiment Chart
-      if (data.timestamp && data.average_sentiment !== undefined) {
-        sentimentChart.data.labels.push(data.timestamp); // Add new timestamp
-        sentimentChart.data.datasets[0].data.push(data.average_sentiment); // Add new average sentiment
-        sentimentChart.update();
-      }
+            // Handle errors
+            if (data.error) {
+                document.getElementById('error').textContent = `Error: ${data.error}`;
+                if (data.error.includes('TIMEOUT') || data.error.includes('failed')) {
+                    console.log('Attempting to reconnect...');
+                    setTimeout(connect, RECONNECT_TIMEOUT);
+                }
+                return;
+            }
 
-      // Update Engagement Chart
-      if (data.engagement) {
-        engagementChart.data.labels.push(data.timestamp); // Add new timestamp
-        engagementChart.data.datasets[0].data.push(data.engagement.comments_per_minute); // Add comments per minute
-        engagementChart.update();
+            // Clear error message if successful data received
+            document.getElementById('error').textContent = '';
+            
+            // Update charts and tables
+            updateCharts(data);
+        };
 
-        // Update Likes Chart
-        likesChart.data.labels.push(data.timestamp);
-        likesChart.data.datasets[0].data.push(data.engagement.likes);
-        likesChart.update();
-      }
+        websocket.onerror = (error) => {
+            console.error('WebSocket error:', error);
+            document.getElementById('error').textContent = 'WebSocket error. Attempting to reconnect...';
+        };
 
-      // Update Sentiment Distribution Chart
-      if (data.sentiments) {
-        const positive = data.sentiments.filter(s => s > 0).length;
-        const neutral = data.sentiments.filter(s => s === 0).length;
-        const negative = data.sentiments.filter(s => s < 0).length;
+        websocket.onclose = () => {
+            console.log('WebSocket connection closed');
+            document.getElementById('error').textContent = 'Connection closed. Attempting to reconnect...';
+            // Attempt to reconnect
+            setTimeout(connect, RECONNECT_TIMEOUT);
+        };
+    }
 
-        commentsChart.data.datasets[0].data = [positive, neutral, negative];
-        commentsChart.update();
-      }
+    // Separate function to update charts to keep code organized
+    function updateCharts(data) {
+        // Update Sentiment Chart
+        if (data.timestamp && data.average_sentiment !== undefined) {
+            sentimentChart.data.labels.push(data.timestamp);
+            sentimentChart.data.datasets[0].data.push(data.average_sentiment);
+            sentimentChart.update();
+        }
 
-      // Update Keywords Table
-      if (data.keywords) {
-        const keywordTableBody = document.querySelector('#keywordList tbody');
-        keywordTableBody.innerHTML = '';
-        data.keywords.forEach(keyword => {
-          const row = document.createElement('tr');
-          const keywordCell = document.createElement('td');
-          const countCell = document.createElement('td');
-          keywordCell.textContent = keyword.keyword;
-          countCell.textContent = keyword.count;
-          row.appendChild(keywordCell);
-          row.appendChild(countCell);
-          keywordTableBody.appendChild(row);
-        });
-      }
-    };
+        // Update Engagement Chart
+        if (data.engagement) {
+            engagementChart.data.labels.push(data.timestamp);
+            engagementChart.data.datasets[0].data.push(data.engagement.comments_per_minute);
+            engagementChart.update();
 
-    websocket.onerror = (error) => {
-      console.error('WebSocket error:', error);
-      document.getElementById('error').textContent = 'WebSocket error. Check the console for details.';
-    };
+            // Update Likes Chart
+            likesChart.data.labels.push(data.timestamp);
+            likesChart.data.datasets[0].data.push(data.engagement.likes);
+            likesChart.update();
+        }
 
-    websocket.onclose = () => {
-      console.log('WebSocket connection closed');
-      document.getElementById('error').textContent = 'WebSocket connection closed.';
-    };
+        // Update Sentiment Distribution Chart
+        if (data.sentiments) {
+            const positive = data.sentiments.filter(s => s > 0).length;
+            const neutral = data.sentiments.filter(s => s === 0).length;
+            const negative = data.sentiments.filter(s => s < 0).length;
+
+            commentsChart.data.datasets[0].data = [positive, neutral, negative];
+            commentsChart.update();
+        }
+
+        // Update Keywords Table
+        if (data.keywords) {
+            const keywordTableBody = document.querySelector('#keywordList tbody');
+            keywordTableBody.innerHTML = '';
+            data.keywords.forEach(keyword => {
+                const row = document.createElement('tr');
+                const keywordCell = document.createElement('td');
+                const countCell = document.createElement('td');
+                keywordCell.textContent = keyword.keyword;
+                countCell.textContent = keyword.count;
+                row.appendChild(keywordCell);
+                row.appendChild(countCell);
+                keywordTableBody.appendChild(row);
+            });
+        }
+    }
+
+    // Initial connection
+    connect();
   </script>
 </body>
 </html>
