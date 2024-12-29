@@ -5,6 +5,7 @@ python-multipart
 websockets
 numpy
 scikit-learn
+transformers
 pydantic
 python-jose[cryptography]
 textblob
