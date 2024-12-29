@@ -6,6 +6,7 @@ websockets
 numpy
 scikit-learn
 transformers
+pytorch
 pydantic
 python-jose[cryptography]
 textblob
