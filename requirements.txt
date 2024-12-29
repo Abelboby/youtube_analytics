@@ -3,8 +3,6 @@ uvicorn
 playwright
 python-multipart
 websockets
-transformers
-torch
 numpy
 scikit-learn
 pydantic
